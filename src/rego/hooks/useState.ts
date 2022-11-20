@@ -8,7 +8,7 @@ export function useState<T>(value: T): HookResult<T> {
     const component = dispatcher.lastComponentCalled
 
     if (!component) {
-        throw new Error('Hook rules was break.');
+        throw new Error('Hook rules was broken.');
     }
 
     const prototype = component.prototype as ComponentPrototype
