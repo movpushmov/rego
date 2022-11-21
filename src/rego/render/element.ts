@@ -1,19 +1,20 @@
-import {ElementChildren, HTMLProps, isPlainType, RegoElement} from "./dom";
+import {isPlainType} from "./dom";
 import {dispatcher} from "./dispatcher";
 import {ComponentPrototype} from "../hooks/types";
 import {ReactHTML} from "react";
+import {ElementChildren, HTMLProps, PlainRegoElement, RegoElement, RenderRegoElement} from "./types";
 
-type ElementProps<T> = { children?: ElementChildren<RegoElement> } & T | { children?: ElementChildren<RegoElement> } | null | undefined
-type ElementType<T> = (props?: ElementProps<T>) => RegoElement
+type ElementProps<T> = { children?: ElementChildren<RenderRegoElement> } & T | { children?: ElementChildren<RenderRegoElement> } | null | undefined
+type ElementType<T> = (props?: ElementProps<T>) => RenderRegoElement
 type DomElementType = string | 'fragment'
 
 function validElementType(element: string): element is keyof ReactHTML {
-    return element !== 'plain' && element !== 'fragment'
+    return element !== 'plain'
 }
 
-export function createElement<T>(element: DomElementType, props: ElementProps<HTMLProps>, children: ElementChildren<RegoElement>): RegoElement;
-export function createElement<T>(element: ElementType<T>, props: ElementProps<HTMLProps>, children: ElementChildren<RegoElement>): RegoElement;
-export function createElement<T>(element: ElementType<T> | DomElementType, props: ElementProps<HTMLProps>, children: ElementChildren<RegoElement>): RegoElement | null {
+export function createElement<T>(element: DomElementType, props: ElementProps<HTMLProps>, children: ElementChildren<RenderRegoElement>): RenderRegoElement;
+export function createElement<T>(element: ElementType<T>, props: ElementProps<HTMLProps>, children: ElementChildren<RenderRegoElement>): RenderRegoElement;
+export function createElement<T>(element: ElementType<T> | DomElementType, props: ElementProps<HTMLProps>, children: ElementChildren<RenderRegoElement>): RenderRegoElement | null {
     if (typeof element === 'string') {
         if (validElementType(element)) {
             return {
@@ -51,13 +52,13 @@ export function createElement<T>(element: ElementType<T> | DomElementType, props
     }
 }
 
-function checkElement(element: ElementChildren<RegoElement>): RegoElement | null | undefined {
+function checkElement(element: ElementChildren<RenderRegoElement>): RegoElement | null | undefined {
     if (isPlainType(element)) {
         return {
             type: 'plain',
             props: { children: element },
-        }
+        } as PlainRegoElement
     }
 
-    return <RegoElement | null | undefined>element
+    return <RegoElement>element
 }

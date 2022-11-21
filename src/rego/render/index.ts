@@ -1,6 +1,7 @@
-import {NodeRegoElement, RegoElement, regoInfo} from "./dom";
+import {regoInfo} from "./dom";
 import {dispatcher} from "./dispatcher";
 import {CSSProperties} from "react";
+import {NodeRegoElement, RegoElement} from "./types";
 
 export type RootType = () => RegoElement;
 
