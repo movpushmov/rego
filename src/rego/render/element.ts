@@ -23,23 +23,16 @@ function validElementType(element: string): element is keyof ReactHTML {
     return element !== 'plain'
 }
 
-export function createElement<T>(element: DomElementType, props: ElementProps<HTMLProps>, children: ElementChildren<RenderRegoElement>): RenderRegoElement;
-export function createElement<T>(element: ElementType, props: ElementProps<T>, children: ElementChildren<RenderRegoElement>): RenderRegoElement;
-export function createElement<T>(element: ElementType | DomElementType, props: ElementProps<T>, children: ElementChildren<RenderRegoElement>): RenderRegoElement | null {
+export function createElement<T>(element: DomElementType, props: ElementProps<HTMLProps>, ...children: ElementChildren<RenderRegoElement>[]): RenderRegoElement;
+export function createElement<T>(element: ElementType, props: ElementProps<T>, ...children: ElementChildren<RenderRegoElement>[]): RenderRegoElement;
+export function createElement<T>(element: ElementType | DomElementType, props: ElementProps<T>, ...children: ElementChildren<RenderRegoElement>[]): RenderRegoElement | null {
     if (typeof element === 'string') {
         if (validElementType(element)) {
-            let formattedChildren = children
-
-            if (Array.isArray(formattedChildren)) {
-                formattedChildren = formattedChildren.map(c => checkElement(c));
-            } else if (isPlainType(formattedChildren)) {
-                formattedChildren = checkElement(formattedChildren);
-            }
-
             return {
                 type: element,
                 props: {
-                    children: formattedChildren,
+                    children:
+                        children.length > 1 ? children.map(c => checkElement(c)) : checkElement(children[0]),
                     ...props
                 },
             } as FragmentRegoElement | NodeRegoElement
@@ -53,13 +46,20 @@ export function createElement<T>(element: ElementType | DomElementType, props: E
     const prototype = getPrototype(element);
     Object.values(prototype.regoMeta).forEach(meta => meta.lastHookId = 0);
 
+    let protoUsed = dispatcher.prototypesUsed.includes(prototype)
+
+    if (!protoUsed) {
+        prototype.lastMetaId = 0;
+        dispatcher.prototypesUsed.push(prototype);
+    }
+
     const preResult = checkElement(
         props ?
             children ? element({ ...props, children }) : element({ ...props }) :
             children ? element({ children }) : element({})
     );
 
-    prototype.lastMetaId = prototype.lastMetaId !== void 0 ? prototype.lastMetaId + 1 : 0;
+    prototype.lastMetaId++;
 
     if (!preResult) {
         return null
@@ -77,7 +77,7 @@ export function createElement<T>(element: ElementType | DomElementType, props: E
 }
 
 function checkElement(element: ElementChildren<RenderRegoElement>): RegoElement | null | undefined {
-    if (isPlainType(element)) {
+    if (isPlainType(element) && typeof element !== 'boolean') {
         return {
             type: 'plain',
             props: { children: element },

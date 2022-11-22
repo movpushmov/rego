@@ -31,6 +31,7 @@ export function update() {
     prototype.lastMetaId = 0;
 
     dispatcher.lastComponentCalled = root;
+    dispatcher.prototypesUsed = [];
 
     const newDOM = <RegoElement>root();
 
