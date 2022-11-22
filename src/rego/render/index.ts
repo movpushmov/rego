@@ -1,13 +1,13 @@
 import {regoInfo} from "./dom";
 import {dispatcher} from "./dispatcher";
 import {CSSProperties} from "react";
-import {NodeRegoElement, RegoElement} from "./types";
+import {NodeRegoElement, NullableElement, RegoElement, RenderRegoElement} from "./types";
 
-export type RootType = () => RegoElement;
+export type RootType = () => RenderRegoElement;
 
 export function render<T>(element: RootType, container: HTMLElement) {
     dispatcher.lastComponentCalled = element;
-    const tree = element();
+    const tree = <RegoElement>element();
 
     regoInfo.root = element;
     regoInfo.virtualDOM = tree;
@@ -16,7 +16,7 @@ export function render<T>(element: RootType, container: HTMLElement) {
     renderNode(tree, container);
 }
 
-export function renderNode(element: RegoElement | RegoElement[] | null | undefined, container: HTMLElement, after?: HTMLElement | Text) {
+export function renderNode(element: NullableElement<RegoElement> | NullableElement<RegoElement>[] | null | undefined, container: HTMLElement, after?: HTMLElement | Text) {
     if (!element) {
         return
     }
@@ -41,7 +41,7 @@ export function renderNode(element: RegoElement | RegoElement[] | null | undefin
             break;
         }
         case 'plain': {
-            const node = document.createTextNode(String(element));
+            const node = document.createTextNode(String(element.props.children));
             after ? after.after(node) : container.appendChild(node);
 
             element.element = node;

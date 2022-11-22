@@ -1,27 +1,28 @@
-import {ComponentPrototype, DispatcherProps} from "./types";
+import {DispatcherProps} from "./types";
 import {update} from "../render/dom";
-import {getPrototype} from "./utils";
+import {getMeta} from "./utils";
+import {ElementMeta} from "./types";
 
 type HookResult<T> = [T, (props: DispatcherProps<T>) => void]
 
 export function useState<T>(value?: T): HookResult<T> {
-    const prototype = getPrototype();
-    const pair = prototype.hooks[prototype.lastHookId]
+    const meta = getMeta();
+    const pair = meta.hooks[meta.lastHookId];
 
     if (pair) {
-        prototype.lastHookId++;
+        meta.lastHookId++;
         return pair as HookResult<T>
     } else {
-        prototype.hooks[prototype.lastHookId] = [value, makeDispatcher<T>(prototype.lastHookId, prototype)]
+        meta.hooks[meta.lastHookId] = [value, makeDispatcher<T>(meta.lastHookId, meta)]
     }
 
-    prototype.lastHookId++;
-    return prototype.hooks[prototype.lastHookId - 1] as HookResult<T>;
+    meta.lastHookId++;
+    return meta.hooks[meta.lastHookId - 1] as HookResult<T>;
 }
 
-function makeDispatcher<T>(hookId: number, prototype: ComponentPrototype) {
+function makeDispatcher<T>(hookId: number, meta: ElementMeta) {
     return (props: DispatcherProps<T>) => {
-        const prevPair = prototype.hooks![hookId] as HookResult<T>;
+        const prevPair = meta.hooks![hookId] as HookResult<T>;
 
         let res: T | null;
         res = 'call' in props ? props(prevPair[0]) : props;

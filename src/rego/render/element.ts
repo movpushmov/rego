@@ -2,10 +2,21 @@ import {isPlainType} from "./dom";
 import {dispatcher} from "./dispatcher";
 import {ComponentPrototype} from "../hooks/types";
 import {ReactHTML} from "react";
-import {ElementChildren, HTMLProps, PlainRegoElement, RegoElement, RenderRegoElement} from "./types";
+import {
+    ElementChildren,
+    FragmentRegoElement,
+    HTMLProps, NodeRegoElement,
+    PlainRegoElement,
+    RegoElement,
+    RenderRegoElement
+} from "./types";
+import {getPrototype} from "../hooks/utils";
 
-type ElementProps<T> = { children?: ElementChildren<RenderRegoElement> } & T | { children?: ElementChildren<RenderRegoElement> } | null | undefined
-type ElementType<T> = (props?: ElementProps<T>) => RenderRegoElement
+export type ElementProps<T = {}> =
+    { children?: ElementChildren<RenderRegoElement> } & T |
+    null | undefined
+
+type ElementType = (props: any) => RenderRegoElement
 type DomElementType = string | 'fragment'
 
 function validElementType(element: string): element is keyof ReactHTML {
@@ -13,30 +24,42 @@ function validElementType(element: string): element is keyof ReactHTML {
 }
 
 export function createElement<T>(element: DomElementType, props: ElementProps<HTMLProps>, children: ElementChildren<RenderRegoElement>): RenderRegoElement;
-export function createElement<T>(element: ElementType<T>, props: ElementProps<HTMLProps>, children: ElementChildren<RenderRegoElement>): RenderRegoElement;
-export function createElement<T>(element: ElementType<T> | DomElementType, props: ElementProps<HTMLProps>, children: ElementChildren<RenderRegoElement>): RenderRegoElement | null {
+export function createElement<T>(element: ElementType, props: ElementProps<T>, children: ElementChildren<RenderRegoElement>): RenderRegoElement;
+export function createElement<T>(element: ElementType | DomElementType, props: ElementProps<T>, children: ElementChildren<RenderRegoElement>): RenderRegoElement | null {
     if (typeof element === 'string') {
         if (validElementType(element)) {
+            let formattedChildren = children
+
+            if (Array.isArray(formattedChildren)) {
+                formattedChildren = formattedChildren.map(c => checkElement(c));
+            } else if (isPlainType(formattedChildren)) {
+                formattedChildren = checkElement(formattedChildren);
+            }
+
             return {
                 type: element,
                 props: {
-                    children,
+                    children: formattedChildren,
                     ...props
                 },
-            }
+            } as FragmentRegoElement | NodeRegoElement
         }
 
         throw new Error("Bad element type")
     }
 
     dispatcher.lastComponentCalled = element;
-    (element.prototype as ComponentPrototype).lastHookId = 0;
+
+    const prototype = getPrototype(element);
+    Object.values(prototype.regoMeta).forEach(meta => meta.lastHookId = 0);
 
     const preResult = checkElement(
         props ?
             children ? element({ ...props, children }) : element({ ...props }) :
-            children ? element({ children }) : element()
+            children ? element({ children }) : element({})
     );
+
+    prototype.lastMetaId = prototype.lastMetaId !== void 0 ? prototype.lastMetaId + 1 : 0;
 
     if (!preResult) {
         return null
@@ -48,7 +71,8 @@ export function createElement<T>(element: ElementType<T> | DomElementType, props
 
     return {
         ...preResult,
-        component: element
+        component: element,
+        metaId: prototype.lastMetaId - 1
     }
 }
 

@@ -1,14 +1,14 @@
 import {render} from "./rego/render";
-import {createElement} from "./rego/render/element";
+import {createElement, ElementProps} from "./rego/render/element";
 import {useState} from "./rego/hooks/useState";
 import {useEffect} from "./rego/hooks/useEffect";
 
-function InterestingComponent() {
+function InterestingComponent(props: { id: number }) {
     useEffect(() => {
-        console.log('called on mount')
+        console.log('called on mount', props.id)
 
         return () => {
-            console.log('called on unmount')
+            console.log('called on unmount', props.id)
         }
     }, [])
 
@@ -29,7 +29,8 @@ function App() {
             'Text 1',
             createElement('button', { onClick: () => setState(p => p + 1) }, `Button clicked ${state} times`),
             createElement('button', { onClick: () => setIsUnmounted(m => !m) }, unmounted ? 'Mount' : 'Unmount'),
-            !unmounted ? createElement(InterestingComponent, null, null) : null,
+            createElement(InterestingComponent, { id: 12 }, null),
+            !unmounted ? createElement(InterestingComponent, { id: 32 }, null) : null,
             'Text 2',
         ])
     )

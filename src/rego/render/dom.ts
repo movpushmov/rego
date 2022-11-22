@@ -25,10 +25,14 @@ export function update() {
         return;
     }
 
-    (root.prototype as ComponentPrototype).lastHookId = 0;
+    const prototype = getPrototype(root);
+
+    Object.values(prototype.regoMeta).map(meta => meta.lastHookId = 0);
+    prototype.lastMetaId = 0;
+
     dispatcher.lastComponentCalled = root;
 
-    const newDOM = root();
+    const newDOM = <RegoElement>root();
 
     reconcile(0, virtualDOM, newDOM, null);
     regoInfo.virtualDOM = newDOM;
@@ -58,7 +62,7 @@ function reconcile(
     oldNode: NullableElement<RegoElement>,
     newNode: NullableElement<RegoElement>,
     parentNode: FragmentRegoElement | NodeRegoElement | null
-) {
+): void {
     if (!newNode) {
         notifyUnmount(oldNode);
         return oldNode?.element?.remove();
@@ -97,6 +101,7 @@ function reconcile(
             }
 
             if (matchNode(newChild, child!) && !isPlainType(newChild)) {
+                newChild.element = child!.element
                 reconcile(0, child, newChild, <FragmentRegoElement | NodeRegoElement>oldNode);
                 reconciled = true;
             } else {
@@ -125,6 +130,8 @@ function reconcile(
                 continue
 
             if (matchNode(child, oldNode.props.children) && !isPlainType(oldNode.props.children)) {
+                child.element = oldNode.props.children.element;
+
                 reconcile(i, oldNode.props.children, child, <FragmentRegoElement | NodeRegoElement>oldNode);
                 after = oldNode.props.children.element
             } else {
@@ -132,12 +139,49 @@ function reconcile(
             }
         }
     }
+
+    if (!Array.isArray(newNode.props.children) && !Array.isArray(oldNode.props.children)) {
+        newNode.element = oldNode.element;
+        return reconcile(
+            0,
+            <RegoElement>oldNode.props.children,
+            <RegoElement>newNode.props.children,
+            newNode as FragmentRegoElement | NodeRegoElement
+        );
+    }
+
+    if (Array.isArray(newNode.props.children) && Array.isArray(oldNode.props.children)) {
+        if (newNode.props.children.length !== oldNode.props.children.length) {
+            const node = (<NodeRegoElement | FragmentRegoElement>oldNode)
+
+            if (node.element) {
+                notifyUnmount(oldNode);
+                node.element.innerHTML = '';
+
+                renderNode(newNode.props.children, node.element);
+            }
+        } else {
+            for (let i = 0; i < newNode.props.children.length; i++) {
+                if (newNode.props.children[i] && oldNode.props.children[i]) {
+                    newNode.props.children[i]!.element = oldNode.props.children[i]!.element;
+                }
+
+                reconcile(i, oldNode.props.children[i], newNode.props.children[i], <FragmentRegoElement | NodeRegoElement>oldNode);
+            }
+        }
+    }
 }
 
-function renderNodeOnPosition(childId: number, newNode: RegoElement, parentNode: FragmentRegoElement | NodeRegoElement) {
+function renderNodeOnPosition(childId: number, newNode: RegoElement, parentNode?: FragmentRegoElement | NodeRegoElement) {
+    if (!parentNode) {
+        renderNode(newNode, regoInfo.container!);
+
+        return;
+    }
+
     if (Array.isArray(parentNode.props.children)) {
         const children = parentNode.props.children as RegoElement[];
-        renderNode(newNode, parentNode.element!, childId === 0 ? void 0 : children[childId].element);
+        renderNode(newNode, parentNode.element!, childId === 0 ? void 0 : children[childId - 1].element);
     } else {
         renderNode(newNode, parentNode.element!);
     }
@@ -191,15 +235,14 @@ function notifyUnmount(treeNode: NullableElement<RegoElement>) {
         return
 
     if (treeNode.component) {
-        const prototype = getPrototype();
+        const prototype = getPrototype(treeNode.component);
 
-        for (const key in prototype.unmountHandlers) {
-            prototype.unmountHandlers[key]();
-        }
+        Object
+            .values(prototype.regoMeta[treeNode.metaId ?? 0].unmountHandlers)
+            .forEach(handler => handler());
 
-        prototype.unmountHandlers = {};
-        prototype.lastHookId = 0;
-        prototype.hooks = [];
+        delete prototype.regoMeta[treeNode.metaId ?? 0];
+        prototype.lastMetaId = 0;
     }
 
     const { children } = treeNode.props

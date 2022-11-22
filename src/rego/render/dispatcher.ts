@@ -3,5 +3,5 @@ type Dispatcher = {
 }
 
 export const dispatcher: Dispatcher = {
-    lastComponentCalled: null
+    lastComponentCalled: null,
 }

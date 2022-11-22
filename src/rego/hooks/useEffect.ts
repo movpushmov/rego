@@ -1,27 +1,27 @@
-import {getPrototype} from "./utils";
+import {getMeta} from "./utils";
 import {DepsArray, EffectCallback, EffectCallbackResult, EffectType} from "./types";
 
-export function useEffect(callback: EffectCallback, deps?: DepsArray) {
-    const prototype = getPrototype();
-    const hookId = prototype.lastHookId;
+export function useEffect(callback: EffectCallback, deps: DepsArray | undefined) {
+    const meta = getMeta();
+    const hookId = meta.lastHookId;
 
-    prototype.lastHookId++;
+    meta.lastHookId++;
 
-    const oldDeps = prototype.hooks[hookId] as EffectType | undefined
+    const oldDeps = meta.hooks[hookId] as EffectType | undefined
 
-    if (!deps && oldDeps || deps && oldDeps && deps.length !== oldDeps.length) {
+    if (!deps && oldDeps || (deps && oldDeps && typeof oldDeps !== 'boolean' && deps.length !== oldDeps.length)) {
         throw new Error('Rules of useEffect was broken.');
     }
 
-    if (!oldDeps) {
-        prototype.hooks[hookId] = deps;
-        resolveCallback(callback, prototype.unmountHandlers, hookId);
-
+    if (typeof oldDeps === 'boolean' || !deps) {
+        resolveCallback(callback, meta.unmountHandlers, hookId);
         return;
     }
 
-    if (!deps) {
-        resolveCallback(callback, prototype.unmountHandlers, hookId);
+    if (!oldDeps) {
+        meta.hooks[hookId] = deps ?? true;
+        resolveCallback(callback, meta.unmountHandlers, hookId);
+
         return;
     }
 
@@ -31,7 +31,7 @@ export function useEffect(callback: EffectCallback, deps?: DepsArray) {
 
     for (let i = 0; i < deps.length; i++) {
         if (deps[i] !== oldDeps[i]) {
-            resolveCallback(callback, prototype.unmountHandlers, hookId);
+            resolveCallback(callback, meta.unmountHandlers, hookId);
             break;
         }
     }
@@ -50,5 +50,5 @@ function resolveCallback(
         } else {
             delete unmountHandlers[lastHookId];
         }
-    })
+    });
 }

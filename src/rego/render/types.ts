@@ -12,6 +12,7 @@ export type PlainRegoElement = {
 
     element?: Text
     component?: Function
+    metaId?: number
 }
 
 export type FragmentRegoElement = {
@@ -20,6 +21,7 @@ export type FragmentRegoElement = {
 
     element?: HTMLElement
     component?: Function
+    metaId?: number
 }
 
 export type NodeRegoElement = {
@@ -28,6 +30,7 @@ export type NodeRegoElement = {
 
     element?: HTMLElement
     component?: Function
+    metaId?: number
 }
 
 type CustomProps<T = {}> = {
@@ -36,7 +39,8 @@ type CustomProps<T = {}> = {
 
 export type RenderRegoElement = FragmentRegoElement | NodeRegoElement | PlainRegoElement
 
-export type RegoElement =
+export type RegoElement = (
     Omit<FragmentRegoElement, 'props'> & CustomProps |
     PlainRegoElement |
     Omit<NodeRegoElement, 'props'> & CustomProps<HTMLProps>
+)
