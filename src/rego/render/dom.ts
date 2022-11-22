@@ -1,23 +1,19 @@
-import {applyStyles, render, renderNode, RootType} from "./index";
-import React, {HTMLAttributes} from "react";
+import {renderNode, RootType} from "./index";
 import {dispatcher} from "./dispatcher";
 import {ComponentPrototype} from "../hooks/types";
-
-export type HTMLProps = Omit<React.DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement>, 'children'>
-export type ElementChildren<T> = T | T[] | string | null | undefined | number | boolean
-
-export type RegoElement = {
-    type: string | 'fragment'
-    props: {
-        children: ElementChildren<RegoElement>
-    } & HTMLProps
-
-    element?: HTMLElement
-    unmountHandler?: () => void;
-}
+import {getPrototype} from "../hooks/utils";
+import {
+    ElementChildren,
+    FragmentRegoElement,
+    NodeRegoElement, NullableElement,
+    PlainElement, PlainRegoElement,
+    RegoElement,
+    RenderRegoElement
+} from "./types";
 
 export const regoInfo = {
     virtualDOM: null as RegoElement | null,
+    container: null as HTMLElement | null,
 
     root: null as RootType | null
 }
@@ -29,110 +25,227 @@ export function update() {
         return;
     }
 
-    (root.prototype as ComponentPrototype).lastHookId = 0;
+    const prototype = getPrototype(root);
+
+    Object.values(prototype.regoMeta).map(meta => meta.lastHookId = 0);
+    prototype.lastMetaId = 0;
+
     dispatcher.lastComponentCalled = root;
+    dispatcher.prototypesUsed = [];
 
-    const newDOM = root();
+    const newDOM = <RegoElement>root();
 
-    reconcile(virtualDOM, newDOM);
+    reconcile(0, virtualDOM, newDOM, null);
     regoInfo.virtualDOM = newDOM;
 }
 
-function isPlainType(child: ElementChildren<RegoElement>) {
+
+export function isPlainType(child: ElementChildren<RenderRegoElement>): child is PlainElement {
     return typeof child === 'number' || typeof child == 'boolean' || typeof child === 'string'
 }
 
-function reconcile(oldNode: RegoElement, newNode: RegoElement) {
-    if (oldNode.type !== newNode.type && oldNode.element) {
-        oldNode.unmountHandler?.();
+/*
+    differences:
 
-        if (oldNode.type === 'fragment') {
-            oldNode.element.innerHTML = '';
-            renderNode(newNode, oldNode.element);
+    new node     old node
+
+    object       array
+    array        not array
+    -- different array length --
+    -- same types but != --
+    +  empty        not empty
+    +  not empty    empty
+    +  -- plain but != --
+ */
+
+function reconcile(
+    childId: number,
+    oldNode: NullableElement<RegoElement>,
+    newNode: NullableElement<RegoElement>,
+    parentNode: FragmentRegoElement | NodeRegoElement | null
+): void {
+    if (!newNode) {
+        notifyUnmount(oldNode);
+        return oldNode?.element?.remove();
+    }
+
+    if (!oldNode) {
+        if (!parentNode)
+            return renderNode(newNode, regoInfo.container!);
+
+        return renderNodeOnPosition(childId, newNode, parentNode);
+    }
+
+    if (oldNode.type !== newNode.type) {
+        oldNode.element?.remove();
+        notifyUnmount(oldNode);
+        return renderNode(newNode, parentNode ? <HTMLElement>parentNode.element : regoInfo.container!);
+    }
+
+    if (oldNode.type === 'plain' && oldNode.element) {
+        (<PlainRegoElement>oldNode).element!.textContent = String((<PlainRegoElement>newNode).props.children);
+        newNode.element = oldNode.element
+
+        return;
+    }
+
+    if (!Array.isArray(newNode.props.children) && Array.isArray(oldNode.props.children)) {
+        let reconciled = false
+        const newChild = newNode.props.children
+
+        for (const child of oldNode.props.children) {
+            if (!newChild) {
+                notifyUnmount(child);
+                child?.element?.remove();
+                reconciled = true;
+                continue;
+            }
+
+            if (matchNode(newChild, child!) && !isPlainType(newChild)) {
+                newChild.element = child!.element
+                reconcile(0, child, newChild, <FragmentRegoElement | NodeRegoElement>oldNode);
+                reconciled = true;
+            } else {
+                notifyUnmount(child);
+                child?.element?.remove();
+            }
+        }
+
+        if (!reconciled && newChild && !isPlainType(newChild)) {
+            return renderNode(newChild, (<FragmentRegoElement | NodeRegoElement>oldNode).element!);
+        }
+    }
+
+    if (Array.isArray(newNode.props.children) && !Array.isArray(oldNode.props.children)) {
+        let after
+
+        if (!oldNode.props.children) {
+            renderNode(newNode, parentNode!.element!);
+            return;
+        }
+
+        for (let i = 0; i < newNode.props.children.length; i++) {
+            const child = newNode.props.children[i];
+
+            if (!child)
+                continue
+
+            if (matchNode(child, oldNode.props.children) && !isPlainType(oldNode.props.children)) {
+                child.element = oldNode.props.children.element;
+
+                reconcile(i, oldNode.props.children, child, <FragmentRegoElement | NodeRegoElement>oldNode);
+                after = oldNode.props.children.element
+            } else {
+                renderNode(child, (<FragmentRegoElement | NodeRegoElement>oldNode).element!, after)
+            }
+        }
+    }
+
+    if (!Array.isArray(newNode.props.children) && !Array.isArray(oldNode.props.children)) {
+        newNode.element = oldNode.element;
+        return reconcile(
+            0,
+            <RegoElement>oldNode.props.children,
+            <RegoElement>newNode.props.children,
+            newNode as FragmentRegoElement | NodeRegoElement
+        );
+    }
+
+    if (Array.isArray(newNode.props.children) && Array.isArray(oldNode.props.children)) {
+        if (newNode.props.children.length !== oldNode.props.children.length) {
+            const node = (<NodeRegoElement | FragmentRegoElement>oldNode)
+
+            if (node.element) {
+                notifyUnmount(oldNode);
+                node.element.innerHTML = '';
+
+                renderNode(newNode.props.children, node.element);
+            }
         } else {
-            oldNode.element.remove();
-            renderNode(newNode, oldNode.element.parentElement!);
-        }
+            for (let i = 0; i < newNode.props.children.length; i++) {
+                if (newNode.props.children[i] && oldNode.props.children[i]) {
+                    newNode.props.children[i]!.element = oldNode.props.children[i]!.element;
+                }
 
-        return;
-    }
-
-    if (oldNode.type === 'fragment') {
-        reconcileChildren(oldNode.props.children, newNode.props.children, oldNode.element!);
-    }
-
-    if (!oldNode.element) {
-        return;
-    }
-
-    const { children, style, ...otherProps } = newNode.props
-
-    for (const prop of Object.entries(otherProps) as [string, unknown][]) {
-        // @ts-ignore
-        if (prop[0] in oldNode.props && oldNode.props[prop[0]] !== prop[1]) {
-            // @ts-ignore
-            oldNode.element[prop[0].toLowerCase()] = prop[1];
+                reconcile(i, oldNode.props.children[i], newNode.props.children[i], <FragmentRegoElement | NodeRegoElement>oldNode);
+            }
         }
     }
-
-    applyStyles(oldNode.element, style);
-
-    newNode.element = oldNode.element;
-    newNode.unmountHandler = oldNode.unmountHandler;
-
-    reconcileChildren(oldNode.props.children, newNode.props.children, newNode.element);
 }
 
-function reconcileChildren(
-    oldC: ElementChildren<RegoElement>,
-    newC: ElementChildren<RegoElement>,
-    container: HTMLElement
-) {
-    /*
-        differences:
+function renderNodeOnPosition(childId: number, newNode: RegoElement, parentNode?: FragmentRegoElement | NodeRegoElement) {
+    if (!parentNode) {
+        renderNode(newNode, regoInfo.container!);
 
-        new node     old node
+        return;
+    }
 
-        array        not array             -> full reload
-        object       array                 -> full reload
-        empty        not empty             -> full reload
-        not empty    empty                 -> full reload
+    if (Array.isArray(parentNode.props.children)) {
+        const children = parentNode.props.children as RegoElement[];
+        renderNode(newNode, parentNode.element!, childId === 0 ? void 0 : children[childId - 1].element);
+    } else {
+        renderNode(newNode, parentNode.element!);
+    }
+}
 
-        -- different plain types --        -> full reload
-        -- different array length --       -> reconcile
-        -- same types but != --            -> reconcile
-     */
+type Node = RegoElement | PlainElement
+
+function matchNode(newNode: Node, oldNode: Node): boolean {
+    if (isPlainType(newNode) || isPlainType(oldNode)) {
+        return newNode === oldNode
+    }
+
+    if (newNode.type !== oldNode.type) {
+        return false;
+    }
+
+    if (!newNode.props.children && !oldNode.props.children) {
+        return true;
+    }
+
+    const oldC = oldNode.props.children
+    const newC = newNode.props.children
+
+    if (!newC && !oldC) {
+        return true;
+    }
 
     if (
-        Array.isArray(newC) && !Array.isArray(oldC) ||
+        !newNode.props.children || !oldNode.props.children ||
+        !Array.isArray(oldC) && Array.isArray(newC) ||
         !Array.isArray(newC) && Array.isArray(oldC) ||
-        !newC  && oldC ||
-        newC && !oldC ||
-        typeof newC !== typeof oldC ||
-        isPlainType(newC) && isPlainType(oldC) && newC !== oldC
+        !newC && oldC || !oldC && newC ||
+        Array.isArray(newC) && Array.isArray(oldC) && newC.length !== oldC.length
     ) {
-        container.textContent = '';
-        renderNode(newC, container);
-        return;
+        return false
     }
 
     if (Array.isArray(newC) && Array.isArray(oldC)) {
-        if (newC.length !== oldC.length) {
-            container.textContent = '';
-            renderNode(newC, container);
-        } else {
-            for (let i = 0; i < newC.length; i++) {
-                reconcileChildren(oldC[i], newC[i], container);
-            }
+        for (let i = 0; i < newC.length; i++) {
+            matchNode(<Node>newC[i], <Node>oldC[i]);
         }
-        return;
+    } else {
+        matchNode(<Node>newC, <Node>oldC);
     }
 
-    return reconcile(oldC as RegoElement, newC as RegoElement);
+    return true;
 }
 
-function notifyUnmount(treeNode: RegoElement) {
-    treeNode.unmountHandler?.()
+function notifyUnmount(treeNode: NullableElement<RegoElement>) {
+    if (!treeNode)
+        return
+
+    if (treeNode.component) {
+        const prototype = getPrototype(treeNode.component);
+
+        Object
+            .values(prototype.regoMeta[treeNode.metaId ?? 0].unmountHandlers)
+            .forEach(handler => handler());
+
+        delete prototype.regoMeta[treeNode.metaId ?? 0];
+        prototype.lastMetaId = 0;
+    }
+
     const { children } = treeNode.props
 
     if (treeNode.type === 'fragment' && children && typeof children === 'object' && 'type' in children) {
